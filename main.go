@@ -17,34 +17,39 @@ import (
 )
 
 func main() {
-	ctx := kong.Parse(&ServeCmd{}, kong.UsageOnError())
+	ctx := kong.Parse(&Serve{}, kong.UsageOnError())
 	err := ctx.Run()
 	ctx.FatalIfErrorf(err)
 }
 
-type ServeCmd struct {
+type Serve struct {
 	Port int    `help:"Listen on this port." default:"4000"`
 	Dir  string `help:"Serve files from this directory." arg:"" type:"existingdir"`
 	Cors bool   `help:"Include CORS support (on by default)." default:"true" negatable:""`
 	Dot  bool   `help:"Serve dot files (files prefixed with a '.')" default:"false"`
 }
 
-func (c *ServeCmd) Run() error {
-	server := &Server{
-		dir:  c.Dir,
-		port: c.Port,
-		cors: c.Cors,
-		dot:  c.Dot,
-	}
+func (s *Serve) Run() error {
+	handler := s.handler()
 
-	return server.Start()
+	fmt.Printf("Serving %s on http://localhost:%d/\n", s.Dir, s.Port)
+	return http.ListenAndServe(fmt.Sprintf(":%d", s.Port), handler)
 }
 
-type Server struct {
-	dir  string
-	port int
-	cors bool
-	dot  bool
+func (s *Serve) handler() http.Handler {
+	mux := http.NewServeMux()
+
+	dir := http.Dir(s.Dir)
+	mux.Handle("/", http.FileServer(dir))
+
+	handler := withIndex(string(dir), s.Dot, http.Handler(mux))
+	if !s.Dot {
+		handler = excludeDot(handler)
+	}
+	if s.Cors {
+		handler = cors.Default().Handler(handler)
+	}
+	return handler
 }
 
 func excludeDot(handler http.Handler) http.Handler {
@@ -162,27 +167,10 @@ func withIndex(dir string, dot bool, handler http.Handler) http.Handler {
 			Parents: parentEntries,
 		}
 
+		response.Header().Set("Content-Type", "text/html; charset=utf-8")
 		response.WriteHeader(http.StatusOK)
 		if err := indexTemplate.Execute(response, data); err != nil {
 			fmt.Printf("trouble executing template: %s\n", err)
 		}
 	})
-}
-
-func (s *Server) Start() error {
-	mux := http.NewServeMux()
-
-	dir := http.Dir(s.dir)
-	mux.Handle("/", http.FileServer(dir))
-
-	handler := withIndex(string(dir), s.dot, http.Handler(mux))
-	if !s.dot {
-		handler = excludeDot(handler)
-	}
-	if s.cors {
-		handler = cors.Default().Handler(handler)
-	}
-
-	fmt.Printf("Serving %s on http://localhost:%d/\n", s.dir, s.port)
-	return http.ListenAndServe(fmt.Sprintf(":%d", s.port), handler)
 }
