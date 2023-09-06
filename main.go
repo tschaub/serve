@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"os"
 	"path"
@@ -17,34 +18,40 @@ import (
 )
 
 func main() {
-	ctx := kong.Parse(&ServeCmd{}, kong.UsageOnError())
+	ctx := kong.Parse(&Serve{}, kong.UsageOnError())
 	err := ctx.Run()
 	ctx.FatalIfErrorf(err)
 }
 
-type ServeCmd struct {
-	Port int    `help:"Listen on this port." default:"4000"`
-	Dir  string `help:"Serve files from this directory." arg:"" type:"existingdir"`
-	Cors bool   `help:"Include CORS support (on by default)." default:"true" negatable:""`
-	Dot  bool   `help:"Serve dot files (files prefixed with a '.')" default:"false"`
+type Serve struct {
+	Port          int    `help:"Listen on this port." default:"4000"`
+	Dir           string `help:"Serve files from this directory." arg:"" type:"existingdir"`
+	Cors          bool   `help:"Include CORS support (on by default)." default:"true" negatable:""`
+	Dot           bool   `help:"Serve dot files (files prefixed with a '.')." default:"false"`
+	ExplicitIndex bool   `help:"Only serve index.html files if URL path includes it." default:"false"`
 }
 
-func (c *ServeCmd) Run() error {
-	server := &Server{
-		dir:  c.Dir,
-		port: c.Port,
-		cors: c.Cors,
-		dot:  c.Dot,
+func (s *Serve) Run() error {
+	handler := s.handler()
+
+	fmt.Printf("Serving %s on http://localhost:%d/\n", s.Dir, s.Port)
+	return http.ListenAndServe(fmt.Sprintf(":%d", s.Port), handler)
+}
+
+func (s *Serve) handler() http.Handler {
+	mux := http.NewServeMux()
+
+	dir := http.Dir(s.Dir)
+	mux.Handle("/", http.FileServer(dir))
+
+	handler := withIndex(string(dir), s.Dot, s.ExplicitIndex, http.Handler(mux))
+	if !s.Dot {
+		handler = excludeDot(handler)
 	}
-
-	return server.Start()
-}
-
-type Server struct {
-	dir  string
-	port int
-	cors bool
-	dot  bool
+	if s.Cors {
+		handler = cors.Default().Handler(handler)
+	}
+	return handler
 }
 
 func excludeDot(handler http.Handler) http.Handler {
@@ -81,11 +88,35 @@ const (
 //go:embed index.html
 var indexHtml string
 
-func withIndex(dir string, dot bool, handler http.Handler) http.Handler {
+func withIndex(dir string, dot bool, explicitIndex bool, handler http.Handler) http.Handler {
 	indexTemplate := template.Must(template.New("index").Parse(indexHtml))
 	base := filepath.Base(dir)
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		urlPath := request.URL.Path
+
+		if strings.HasSuffix(urlPath, "/index.html") && explicitIndex {
+			// we need to avoid the built-in redirect
+			indexPath := filepath.Join(dir, urlPath)
+
+			indexFile, err := os.Open(indexPath)
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					http.NotFound(response, request)
+					return
+				}
+				http.Error(response, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			defer indexFile.Close()
+
+			response.Header().Set("Content-Type", "text/html; charset=utf-8")
+			response.WriteHeader(http.StatusOK)
+			if _, err := io.Copy(response, indexFile); err != nil {
+				fmt.Printf("failed to write %s: %s", indexPath, err)
+			}
+			return
+		}
+
 		if !strings.HasSuffix(urlPath, "/") {
 			handler.ServeHTTP(response, request)
 			return
@@ -102,6 +133,7 @@ func withIndex(dir string, dot bool, handler http.Handler) http.Handler {
 			return
 		}
 
+		hasIndex := false
 		entries := []*Entry{}
 		for _, item := range list {
 			name := item.Name()
@@ -117,9 +149,21 @@ func withIndex(dir string, dot bool, handler http.Handler) http.Handler {
 				entry.Path = entry.Path + "/"
 			} else {
 				entry.Type = fileType
+				if name == "index.html" {
+					hasIndex = true
+					if !explicitIndex {
+						break
+					}
+				}
 			}
 			entries = append(entries, entry)
 		}
+
+		if hasIndex && !explicitIndex {
+			handler.ServeHTTP(response, request)
+			return
+		}
+
 		sort.Slice(entries, func(i int, j int) bool {
 			iEntry := entries[i]
 			jEntry := entries[j]
@@ -162,27 +206,10 @@ func withIndex(dir string, dot bool, handler http.Handler) http.Handler {
 			Parents: parentEntries,
 		}
 
+		response.Header().Set("Content-Type", "text/html; charset=utf-8")
 		response.WriteHeader(http.StatusOK)
 		if err := indexTemplate.Execute(response, data); err != nil {
 			fmt.Printf("trouble executing template: %s\n", err)
 		}
 	})
-}
-
-func (s *Server) Start() error {
-	mux := http.NewServeMux()
-
-	dir := http.Dir(s.dir)
-	mux.Handle("/", http.FileServer(dir))
-
-	handler := withIndex(string(dir), s.dot, http.Handler(mux))
-	if !s.dot {
-		handler = excludeDot(handler)
-	}
-	if s.cors {
-		handler = cors.Default().Handler(handler)
-	}
-
-	fmt.Printf("Serving %s on http://localhost:%d/\n", s.dir, s.port)
-	return http.ListenAndServe(fmt.Sprintf(":%d", s.port), handler)
 }
