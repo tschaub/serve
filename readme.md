@@ -1,9 +1,9 @@
-# host
+# serve
 
 Serve files via HTTP.
 
 ```
-Usage: host <dir>
+Usage: serve <dir>
 
 Arguments:
   <dir>    Serve files from this directory.

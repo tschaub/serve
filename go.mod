@@ -1,4 +1,4 @@
-module github.com/tschaub/host
+module github.com/tschaub/serve
 
 go 1.21.0
 

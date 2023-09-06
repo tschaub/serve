@@ -1,6 +1,6 @@
-# License for host
+# License for serve
 
-The host module is distributed under the MIT license.  Find the full source
+The serve module is distributed under the MIT license.  Find the full source
 here: http://tschaub.mit-license.org/
 
 Copyright Tim Schaub.
