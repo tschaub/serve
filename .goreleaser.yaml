@@ -31,3 +31,15 @@ snapshot:
 changelog:
   sort: asc
   use: github-native
+brews:
+  - tap:
+      owner: tschaub
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    url_template: "https://github.com/tschaub/{{ .ProjectName }}/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
+    homepage: "https://github.com/tschaub/{{ .ProjectName }}"
+    description: "Serve files via HTTP."
+    license: "MIT"
+    test: |
+      system "#{bin}/serve --help"
