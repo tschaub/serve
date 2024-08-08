@@ -63,6 +63,27 @@ func TestServeFile(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf("%s/%s\n", testDir, filePath), string(body))
 }
 
+func TestServeCSS(t *testing.T) {
+	testDir := "root"
+	filePath := "style.css"
+
+	s := &Serve{
+		Dir: fmt.Sprintf("testdata/%s", testDir),
+	}
+
+	handler := s.handler()
+
+	request := httptest.NewRequest("GET", fmt.Sprintf("/%s", filePath), nil)
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	response := recorder.Result()
+
+	assert.Equal(t, http.StatusOK, response.StatusCode)
+	assert.Equal(t, "text/css; charset=utf-8", response.Header.Get("Content-Type"))
+}
+
 func TestServeSubIndex(t *testing.T) {
 	testDir := "root"
 	dirPath := "sub"
