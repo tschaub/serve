@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -26,15 +27,36 @@ func main() {
 type Serve struct {
 	Port          int    `help:"Listen on this port." default:"4000"`
 	Dir           string `help:"Serve files from this directory." arg:"" type:"existingdir"`
+	Prefix        string `help:"Prefix all URL paths with this value." default:"/"`
 	Cors          bool   `help:"Include CORS support (on by default)." default:"true" negatable:""`
 	Dot           bool   `help:"Serve dot files (files prefixed with a '.')." default:"false"`
 	ExplicitIndex bool   `help:"Only serve index.html files if URL path includes it." default:"false"`
 }
 
-func (s *Serve) Run() error {
-	handler := s.handler()
+func normalizePrefix(base string, prefix string) (string, error) {
+	joined, err := url.JoinPath(base, prefix, "/")
+	if err != nil {
+		return "", err
+	}
 
-	fmt.Printf("Serving %s on http://localhost:%d/\n", s.Dir, s.Port)
+	u, err := url.Parse(joined)
+	if err != nil {
+		return "", err
+	}
+
+	return u.Path, nil
+}
+
+func (s *Serve) Run() error {
+	base := fmt.Sprintf("http://localhost:%d", s.Port)
+	prefix, err := normalizePrefix(base, s.Prefix)
+	if err != nil {
+		return fmt.Errorf("trouble creating URL prefix: %w", err)
+	}
+	s.Prefix = prefix
+
+	handler := s.handler()
+	fmt.Printf("Serving %s on %s%s\n", s.Dir, base, s.Prefix)
 	return http.ListenAndServe(fmt.Sprintf(":%d", s.Port), handler)
 }
 
@@ -42,9 +64,9 @@ func (s *Serve) handler() http.Handler {
 	mux := http.NewServeMux()
 
 	dir := http.Dir(s.Dir)
-	mux.Handle("/", http.FileServer(dir))
+	mux.Handle(s.Prefix, http.StripPrefix(s.Prefix, http.FileServer(dir)))
 
-	handler := withIndex(string(dir), s.Dot, s.ExplicitIndex, http.Handler(mux))
+	handler := withIndex(string(dir), s.Prefix, s.Dot, s.ExplicitIndex, http.Handler(mux))
 	if !s.Dot {
 		handler = excludeDot(handler)
 	}
@@ -88,11 +110,16 @@ const (
 //go:embed index.html
 var indexHtml string
 
-func withIndex(dir string, dot bool, explicitIndex bool, handler http.Handler) http.Handler {
+func withIndex(dir string, prefix string, dot bool, explicitIndex bool, handler http.Handler) http.Handler {
 	indexTemplate := template.Must(template.New("index").Parse(indexHtml))
 	base := filepath.Base(dir)
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		urlPath := request.URL.Path
+		if !strings.HasPrefix(request.URL.Path, prefix) {
+			http.NotFound(response, request)
+			return
+		}
+
+		urlPath := "/" + strings.TrimPrefix(request.URL.Path, prefix)
 
 		if strings.HasSuffix(urlPath, "/index.html") && explicitIndex {
 			// we need to avoid the built-in redirect
@@ -142,7 +169,7 @@ func withIndex(dir string, dot bool, explicitIndex bool, handler http.Handler) h
 			}
 			entry := &Entry{
 				Name: name,
-				Path: path.Join(urlPath, name),
+				Path: path.Join(prefix, urlPath, name),
 			}
 			if item.IsDir() {
 				entry.Type = folderType
@@ -179,7 +206,7 @@ func withIndex(dir string, dot bool, explicitIndex bool, handler http.Handler) h
 		if urlPath != "/" {
 			parentEntry := &Entry{
 				Name: "..",
-				Path: path.Join(urlPath, ".."),
+				Path: path.Join(prefix, urlPath, ".."),
 				Type: folderType,
 			}
 			entries = append([]*Entry{parentEntry}, entries...)
@@ -191,7 +218,7 @@ func withIndex(dir string, dot bool, explicitIndex bool, handler http.Handler) h
 		for i, part := range parentParts {
 			entry := &Entry{
 				Name: part,
-				Path: strings.Join(parentParts[:i+1], "/") + "/",
+				Path: path.Join(prefix, strings.Join(parentParts[:i+1], "/")) + "/",
 				Type: folderType,
 			}
 			if part == "" {
