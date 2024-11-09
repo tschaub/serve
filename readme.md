@@ -3,7 +3,7 @@
 Serve files via HTTP.
 
 ```
-Usage: serve <dir>
+Usage: serve <dir> [flags]
 
 Arguments:
   <dir>    Serve files from this directory.
@@ -11,9 +11,11 @@ Arguments:
 Flags:
   -h, --help              Show context-sensitive help.
       --port=4000         Listen on this port.
+      --prefix="/"        Prefix all URL paths with this value.
       --[no-]cors         Include CORS support (on by default).
       --dot               Serve dot files (files prefixed with a '.').
       --explicit-index    Only serve index.html files if URL path includes it.
+      --spa               Serve the index.html file for all unknown paths.
 ```
 
 The `serve <dir>` command can be used to browse files in a directory via HTTP.  For example, `serve .` starts a server for browsing the files in the current working directory.  See below for more detail on the [usage](#usage).
@@ -41,6 +43,10 @@ By default, files are served on port 4000 (e.g. `http://localhost:4000`).  To ha
 
 By default, files are served with [CORS headers](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS).  To turn off this behavior, use the `--no-cors` argument (e.g. `serve --no-cors .`).
 
+### `--prefix`
+
+Strip a prefix from the URL path. For example `--prefix foo` will make it so a request for a url like `http://localhost:4000/foo/bar.html` serves the `bar.html` file in the configured `dir` (instead of `foo/bar.html`).
+
 ### `--dot`
 
 By default, files and directories starting with a `.` will not be listed or served.  To allow browsing `.`-prefixed files, use the `--dot` argument (e.g. `serve --dot .`).
@@ -55,3 +61,7 @@ You can use the `--explicit-index` argument to make it so an existing `index.htm
 | ------------------------- | --------------------------------- | --------------------------------- |
 | `/path/to/dir/`           | existing `index.html` is served   | directory listing is served       |
 | `/path/to/dir/index.html` | redirect to `/path/to/dir/`       | existing `index.html` is served   |
+
+### `--spa`
+
+Serve a single-page app. The `--spa` flag makes it so requests for paths that don't exist in the configured `dir` will be served with the `index.html` page. This allows for client-side routing.
