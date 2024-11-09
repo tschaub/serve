@@ -1,6 +1,6 @@
 module github.com/tschaub/serve
 
-go 1.21.0
+go 1.22.0
 
 require (
 	github.com/alecthomas/kong v1.3.0
