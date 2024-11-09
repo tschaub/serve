@@ -31,6 +31,7 @@ type Serve struct {
 	Cors          bool   `help:"Include CORS support (on by default)." default:"true" negatable:""`
 	Dot           bool   `help:"Serve dot files (files prefixed with a '.')." default:"false"`
 	ExplicitIndex bool   `help:"Only serve index.html files if URL path includes it." default:"false"`
+	Spa           bool   `help:"Serve the index.html file for all unknown paths." default:"false"`
 }
 
 func normalizePrefix(base string, prefix string) (string, error) {
@@ -66,7 +67,7 @@ func (s *Serve) handler() http.Handler {
 	dir := http.Dir(s.Dir)
 	mux.Handle(s.Prefix, http.StripPrefix(s.Prefix, http.FileServer(dir)))
 
-	handler := withIndex(string(dir), s.Prefix, s.Dot, s.ExplicitIndex, http.Handler(mux))
+	handler := withIndex(string(dir), s.Prefix, s.Dot, s.ExplicitIndex, s.Spa, http.Handler(mux))
 	if !s.Dot {
 		handler = excludeDot(handler)
 	}
@@ -110,7 +111,7 @@ const (
 //go:embed index.html
 var indexHtml string
 
-func withIndex(dir string, prefix string, dot bool, explicitIndex bool, handler http.Handler) http.Handler {
+func withIndex(dir string, prefix string, dot bool, explicitIndex bool, spa bool, handler http.Handler) http.Handler {
 	indexTemplate := template.Must(template.New("index").Parse(indexHtml))
 	base := filepath.Base(dir)
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -145,6 +146,13 @@ func withIndex(dir string, prefix string, dot bool, explicitIndex bool, handler 
 		}
 
 		if !strings.HasSuffix(urlPath, "/") {
+			if spa {
+				// if not found, serve dir/index.html
+				if _, err := os.Stat(path.Join(dir, urlPath)); errors.Is(err, os.ErrNotExist) {
+					http.ServeFile(response, request, path.Join(dir, "index.html"))
+					return
+				}
+			}
 			handler.ServeHTTP(response, request)
 			return
 		}
