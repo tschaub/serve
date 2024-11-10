@@ -18,20 +18,32 @@ import (
 	"github.com/rs/cors"
 )
 
+var (
+	// set by goreleaser
+	version = "development"
+)
+
 func main() {
-	ctx := kong.Parse(&Serve{}, kong.UsageOnError())
+	ctx := kong.Parse(
+		&Serve{},
+		kong.UsageOnError(),
+		kong.Vars{
+			"version": version,
+		},
+	)
 	err := ctx.Run()
 	ctx.FatalIfErrorf(err)
 }
 
 type Serve struct {
-	Port          int    `help:"Listen on this port." default:"4000"`
-	Dir           string `help:"Serve files from this directory." arg:"" type:"existingdir"`
-	Prefix        string `help:"Prefix all URL paths with this value." default:"/"`
-	Cors          bool   `help:"Include CORS support (on by default)." default:"true" negatable:""`
-	Dot           bool   `help:"Serve dot files (files prefixed with a '.')." default:"false"`
-	ExplicitIndex bool   `help:"Only serve index.html files if URL path includes it." default:"false"`
-	Spa           bool   `help:"Serve the index.html file for all unknown paths." default:"false"`
+	Port          int              `help:"Listen on this port." default:"4000"`
+	Dir           string           `help:"Serve files from this directory." arg:"" type:"existingdir"`
+	Prefix        string           `help:"Prefix all URL paths with this value." default:"/"`
+	Cors          bool             `help:"Include CORS support (on by default)." default:"true" negatable:""`
+	Dot           bool             `help:"Serve dot files (files prefixed with a '.')." default:"false"`
+	ExplicitIndex bool             `help:"Only serve index.html files if URL path includes it." default:"false"`
+	Spa           bool             `help:"Serve the index.html file for all unknown paths." default:"false"`
+	Version       kong.VersionFlag `help:"Print the version and exit."`
 }
 
 func normalizePrefix(base string, prefix string) (string, error) {
