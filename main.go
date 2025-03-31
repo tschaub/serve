@@ -147,7 +147,7 @@ func withIndex(dir string, prefix string, dot bool, explicitIndex bool, spa bool
 				http.Error(response, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			defer indexFile.Close()
+			defer func() { _ = indexFile.Close() }()
 
 			response.Header().Set("Content-Type", "text/html; charset=utf-8")
 			response.WriteHeader(http.StatusOK)
