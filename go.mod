@@ -3,7 +3,7 @@ module github.com/tschaub/serve
 go 1.24.0
 
 require (
-	github.com/alecthomas/kong v1.9.0
+	github.com/alecthomas/kong v1.10.0
 	github.com/rs/cors v1.11.1
 	github.com/stretchr/testify v1.10.0
 )
