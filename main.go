@@ -84,7 +84,7 @@ func (s *Serve) handler() http.Handler {
 		handler = excludeDot(handler)
 	}
 	if s.Cors {
-		handler = cors.Default().Handler(handler)
+		handler = cors.AllowAll().Handler(handler)
 	}
 	return handler
 }
